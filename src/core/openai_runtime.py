@@ -1,7 +1,7 @@
 """
 OpenAI SDK runtime — dùng cho:
 
-  Blue Team → OpenRouter liquid/lfm-3-1.7b:free (create_blue_pair)
+  Blue Team → Liquid API lfm3-1.7b (create_blue_pair)
   Red Team  → OpenAI gpt-4o-mini (create_openai_pair) khi RED_TEAM_PROVIDER=openai
 
 Gemini Red Team dùng Google ADK trong agents/*.py — không đi qua file này.
@@ -29,7 +29,7 @@ class OpenAIAgent:
 
 
 @dataclass
-class _MockInvocationContext:
+class InvocationContext:
     user_id: str = "student"
 
 
@@ -46,26 +46,30 @@ class OpenAIRunner:
     input_hooks: list[Callable[[str], str | None]] = field(default_factory=list)
     output_hooks: list[Callable[[str], str]] = field(default_factory=list)
 
+    conversations: dict[tuple[str, str], list[dict[str, str]]] = field(default_factory=dict)
+
     def _client(self):
         from openai import OpenAI
 
-        return OpenAI(**(self.client_kwargs or {}))
+        return OpenAI(timeout=60.0, max_retries=1, **(self.client_kwargs or {}))
 
-    async def chat(self, agent: OpenAIAgent, user_message: str) -> str:
+    async def chat(self, agent: OpenAIAgent, user_message: str, *, user_id: str = "student", session_id: str | None = None) -> str:
         for hook in self.input_hooks:
             blocked = hook(user_message)
             if blocked:
                 return blocked
 
-        block_msg = await self._run_input_plugins(user_message)
+        block_msg = await self._run_input_plugins(user_message, user_id=user_id)
         if block_msg is not None:
             return block_msg
 
+        history = self.conversations.get((user_id, session_id), []) if session_id else []
         client = self._client()
         completion = client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": agent.instruction},
+                *history,
                 {"role": "user", "content": user_message},
             ],
             temperature=self.temperature,
@@ -76,21 +80,24 @@ class OpenAIRunner:
             text = hook(text)
 
         text = await self._run_output_plugins(text)
+        if session_id:
+            self.conversations[(user_id, session_id)] = [*history,
+                {"role": "user", "content": user_message}, {"role": "assistant", "content": text}]
         return text
 
-    async def _run_input_plugins(self, user_message: str) -> str | None:
+    async def _run_input_plugins(self, user_message: str, *, user_id: str = "student") -> str | None:
         if not self.plugins:
             return None
         try:
             from google.genai import types
-        except ImportError:
-            return None
+        except ImportError as exc:
+            raise RuntimeError("Input guardrail dependencies are missing") from exc
 
         user_content = types.Content(
             role="user",
             parts=[types.Part.from_text(text=user_message)],
         )
-        ctx = _MockInvocationContext()
+        ctx = InvocationContext(user_id=user_id)
         for plugin in self.plugins:
             cb = getattr(plugin, "on_user_message_callback", None)
             if cb is None:
@@ -111,8 +118,8 @@ class OpenAIRunner:
             return text
         try:
             from google.genai import types
-        except ImportError:
-            return text
+        except ImportError as exc:
+            raise RuntimeError("Output guardrail dependencies are missing") from exc
 
         content = types.Content(
             role="model", parts=[types.Part.from_text(text=text)]
@@ -191,7 +198,7 @@ def create_blue_pair(
     output_hooks: list | None = None,
     temperature: float = 0.4,
 ) -> tuple[OpenAIAgent, OpenAIRunner]:
-    """Blue Team — always OpenRouter liquid/lfm-3-1.7b:free."""
+    """Blue Team — direct Liquid API lfm3-1.7b."""
     return _make_pair(
         name=name,
         instruction=instruction,

@@ -1,5 +1,15 @@
 # Day 11 — Controlled Agent Security (2026)
 
+**Học viên:** Đinh Thị Hương · **MSSV:** 2A202603569 · **Lớp:** K5-L3A
+
+**Tên repo nộp theo mẫu:** `K5-L3A-DAY11-DinhThiHuong-2A202603569-Guardrails-HITL-Responsible-AI`
+
+> **Cấu hình Blue của bản repo này đã đổi sang Liquid API trực tiếp:**
+> endpoint `https://api.liquid.ai/openai/v1`, model `lfm3-1.7b`.
+> Điền `LIQUID_API_KEY` vào `.env` local; Blue không cần key OpenRouter.
+> Các hướng dẫn OpenRouter bên dưới là yêu cầu gốc của bài lab.
+
+
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** đóng vai **Blue Team** để học cách xây Guardrails phòng thủ, rồi đóng vai **Red Team** để tấn công agent **Red** hoặc **Red Advance**.  
 > ✅ Làm theo **Checkpoint 1 → 5** trong [`CHECKPOINTS.md`](CHECKPOINTS.md) · nộp theo [`SUBMISSION.md`](SUBMISSION.md).
@@ -162,3 +172,35 @@ pip install -r requirements.txt
 Rồi mở [`CHECKPOINTS.md`](CHECKPOINTS.md) và làm lần lượt Checkpoint 1 → 5.
 
 Nộp theo [`SUBMISSION.md`](SUBMISSION.md) · Quy định: [`RULES.md`](RULES.md).
+
+
+## Chạy bản triển khai này trên Windows
+
+Môi trường local dùng Python 3.12 vì NeMo 0.24.1 không hỗ trợ Python 3.14.
+
+```powershell
+.\.venv312\Scripts\python.exe src/main.py --part 2
+.\.venv312\Scripts\python.exe src/main.py --part 3
+.\.venv312\Scripts\python.exe src/main.py --part 4
+.\.venv312\Scripts\python.exe -m pytest tests -q
+.\.venv312\Scripts\python.exe scripts/grade.py
+```
+
+Blue dùng `LIQUID_API_KEY`. Red có thể dùng endpoint tương thích OpenAI qua
+`OPENAI_BASE_URL`; runtime và NeMo dùng cùng endpoint, key và `OPENAI_MODEL`.
+Lần chạy local dùng 9router và `gpt-5.6-luna` vì endpoint này không cung cấp
+`gpt-4o-mini`. Đây là model tùy chọn trong đề; kết quả này chưa chứng minh
+điều kiện leak Red trên model mặc định. Artifact ghi đúng model đã gọi.
+
+Pipeline chạy rate limit trước input filter, rồi lọc output sau LLM.
+Audit và monitoring quan sát quanh mỗi request; audit che PII và secret trước
+khi ghi đĩa. Egress kiểm tra HTTPS, host chính xác và payload bằng code.
+Các thao tác rủi ro cần approval theo `agents/security_boundary.py` có sẵn.
+Bộ kiểm tra spam gửi request qua toàn pipeline và gọi Liquid thật cho các lượt
+được phép; lượt vượt hạn mức bị chặn trước model. Các nhóm test có user ID
+riêng, không xóa trạng thái limiter. Một user khác được kiểm tra sau đợt spam.
+
+Năm prompt lab lần lượt thử điền cấu hình, đổi định dạng, kể chuyện, xác nhận
+và leo thang qua ba lượt hội thoại có lưu lịch sử. Chúng chỉ nhắm secret giả
+của VinBank; artifact lưu từng câu hỏi và câu trả lời để có thể replay.
+Học viên cần đọc, chỉnh prompt theo ý mình và giải thích code trước khi nộp.

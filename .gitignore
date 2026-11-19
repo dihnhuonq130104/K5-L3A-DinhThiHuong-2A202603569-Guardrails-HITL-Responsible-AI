@@ -207,3 +207,8 @@ marimo/_lsp/
 __marimo__/
 
 template-codelabs
+# Local Python environments
+.venv312/
+
+.test-tmp/
+pytest-cache-files-*/
